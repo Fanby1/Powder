@@ -7,3 +7,4 @@ src/Picture/*
 src/compare/*
 .git/*
 src/DomainNet.zip
+__pycache__/*
