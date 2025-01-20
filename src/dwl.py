@@ -162,10 +162,10 @@ class DWL:
                             p['lr'] =self.learning_rate / 125
                 '''
                 grad = None
-                for step, (indexs, images, target) in enumerate(self.train_loader):
+                for step, (images, target) in enumerate(self.train_loader):
                     
                     images, target = images.cuda(self.device), target.cuda(self.device)
-                    loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss = self._compute_loss(indexs, images, target)
+                    loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss = self._compute_loss(images, target)
                     if step % 10 == 0 and epoch % 10 == 0:
                         print('{}/{} {}/{} {} {} {} {} {}'.format(step, len(self.train_loader), epoch, self.epochs, loss_value, normal_loss, t_c2loss, prompt_loss, output_disloss))
                     
@@ -235,10 +235,10 @@ class DWL:
                         for p in opt.param_groups:
                             p['lr'] =self.learning_rate / 125
                 '''
-                for step, (indexs, images, target) in enumerate(self.train_loader):
+                for step, (images, target) in enumerate(self.train_loader):
                         
                     images, target = images.cuda(self.device), target.cuda(self.device)
-                    loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss = self._compute_loss(indexs, images, target)
+                    loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss = self._compute_loss(images, target)
                     if step % 10 == 0 and epoch % 10 == 0:
                         print('{}/{} {}/{} {} {} {} {} {}'.format(step, len(self.train_loader), epoch, self.epochs, loss_value, normal_loss, t_c2loss, prompt_loss, output_disloss))
                         
@@ -254,7 +254,7 @@ class DWL:
     def compute_dis_loss(self):
         self.model.eval()
         avg_output_disloss = 0
-        for step, (indexs, images, target) in enumerate(self.train_loader):
+        for step, (images, target) in enumerate(self.train_loader):
             images, target = images.cuda(self.device), target.cuda(self.device)
             with torch.no_grad():
                 logits, prompt_loss, prelogits_current, prompt_client_current = self.model(images, train=True)
@@ -270,7 +270,7 @@ class DWL:
         return avg_output_disloss
 
 
-    def _compute_loss(self, indexs, imgs, label):
+    def _compute_loss(self, imgs, label):
         target = get_one_hot(label, self.numclass, self.device)
         #fedmoonLoss = torch.zeros((1,), requires_grad=True).cuda()
         t_c2loss = torch.zeros((1,), requires_grad=True).cuda(self.device)

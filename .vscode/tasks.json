@@ -1,0 +1,84 @@
+{
+	// See https://go.microsoft.com/fwlink/?LinkId=733558
+	// for the documentation about the tasks.json format
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "activate powder",
+			"type": "shell",
+			"command": "conda",
+			"args": [
+				"activate", "powder"
+			],
+			"problemMatcher": [],
+			"presentation": {
+                "reveal": "always",
+                "panel": "shared"  // 确保在同一个终端中运行
+            }
+		},
+		{
+			"label": "cd to src",
+			"type": "shell",
+			"command": "cd",
+			"args": [
+				"${workspaceFolder}/src"
+			],
+			"problemMatcher": [],
+			"presentation": {
+                "reveal": "always",
+                "panel": "shared"  // 确保在同一个终端中运行
+            }
+		},
+		{
+			"label": "run fcil_vit",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"fl_main_hard.py",
+				"--device",
+				"0",
+				"--global_update_lr",
+				"100",
+				"--img_size",
+				"224",
+				"--numclass",
+				"500",
+				"--class_per_task",
+				"20",
+				"--dataset",
+				"ImageNet_R",
+				"--easy",
+				"0",
+				"--tasks_global",
+				"5",
+				"--num_clients",
+				"5",
+				"--epochs_global",
+				"25",
+				"--local_client",
+				"5",
+				"--learning_rate",
+				"0.005",
+				"--method",
+				"fed_cprompt",
+				"--batch_size",
+				"32",
+				"--epochs_local",
+				"50",
+				"--global_weight",
+				"1"
+			],
+			"problemMatcher": [],
+			"dependsOn": ["cd to src", "activate powder"],
+			"dependsOrder": "sequence",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+                "reveal": "always",
+                "panel": "shared"  // 确保在同一个终端中运行
+            }
+		}
+	]
+}

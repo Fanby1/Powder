@@ -8,13 +8,14 @@ import matplotlib.pyplot as plt
 from torch.autograd import Variable
 import torch.optim as optim
 from myNetwork_hard import *
-from iCIFAR100 import iCIFAR100
+from iCIFAR100c import iCIFAR100c
 from torch.utils.data import DataLoader
 import random
 from Fed_utils import * 
 import dataloaders
 from dataloaders.utils import *
 from utils.schedulers import CosineSchedule
+from dataloaders.utils import getDataloader
 
 def get_one_hot(target, num_class, device):
     if isinstance(device, int):
@@ -32,7 +33,7 @@ def entropy(input_):
 
 class GLFC_model_hard:
 
-    def __init__(self, numclass, feature_extractor, batch_size, task_size, memory_size, epochs, learning_rate, train_set, device, encode_model, dataset):
+    def __init__(self, numclass, feature_extractor, batch_size, task_size, memory_size, epochs, learning_rate, device, encode_model, dataset):
 
         super(GLFC_model_hard, self).__init__()
         self.numclass = numclass
@@ -55,7 +56,6 @@ class GLFC_model_hard:
             self.transform = dataloaders.utils.get_transform(dataset=dataset, phase='train', aug=True, resize_imnet=True)
 
         self.old_model = None
-        self.train_dataset = train_set
         self.start = True
         self.signal = False
 
@@ -75,7 +75,7 @@ class GLFC_model_hard:
         self.client_learned_global_task_id = []
 
     # get incremental train data
-    def beforeTrain(self, task_id_new, group, client_index, global_task_id_real, class_real=None):
+    def beforeTrain(self, task_id_new, group, client_index, global_task_id_real, client_mask=None, client_dataset=None):
         try:
             if "sharedcodap" in self.model.args.method:
                 self.model.module.prompt.client_index = client_index
@@ -95,15 +95,14 @@ class GLFC_model_hard:
                     self.last_class = self.current_class
                     self.last_class_proportion = self.current_class_proportion
                     self.last_class_real = self.current_class_real
-                self.current_class = self.model.class_distribution[client_index][task_id_new]
+                self.current_class = client_mask[client_index][task_id_new]
                 #TODO:same task
                 classes_list = []
                 for i in self.current_class:
-                    classes_list.append(class_real[i])
+                    classes_list.append(i)
 
                 self.current_class = classes_list
-                self.current_class_real = self.model.class_distribution_real[client_index][task_id_new]
-                self.current_class_proportion = self.model.class_distribution_proportion[client_index][task_id_new]
+                self.current_class_real = client_mask[client_index][task_id_new]
                 self.real_task_id = task_id_new
                 # print(self.current_class)
                 self.client_learned_global_task_id.append(global_task_id_real[self.model.args.num_clients * task_id_new + client_index])
@@ -141,9 +140,9 @@ class GLFC_model_hard:
         if "sharedcodap" in self.model.args.method:
             self.model.prompt.client_learned_global_task_id = self.client_learned_global_task_id
             self.model.prompt.global_task_id_real = global_task_id_real
-        self.train_loader = self._get_train_and_test_dataloader(self.current_class, self.current_class_real, self.current_class_proportion, False)
+        self.train_loader, self.test_laoder = getDataloader(client_dataset, self.batchsize, client_index, self.real_task_id)
         
-    def update_new_set(self, task_id, client_index):
+    def update_new_set(self, task_id, client_index, client_dataset):
         self.model = model_to_device(self.model, False, self.device)
         self.model.eval()
         
@@ -155,7 +154,7 @@ class GLFC_model_hard:
             m = int(self.memory_size / self.learned_numclass)
             self._reduce_exemplar_sets(m)
             for i in self.last_class: 
-                images = self.train_dataset.get_image_class(self.last_class_real[self.last_class.index(i)], self.model.client_index, self.last_class_proportion)
+                images = client_dataset[client_index][task_id].get_image_class(self.last_class_real[self.last_class.index(i)])
                 self._construct_exemplar_set(images, m)
 
         self.model.train()
@@ -170,24 +169,10 @@ class GLFC_model_hard:
         self.model.set_learned_unlearned_class(sorted(list(set(self.current_class + self.learned_classes))))
         self.model.current_class = self.current_class
         if "notran" in self.model.args.method:
-            self.train_loader = self._get_train_and_test_dataloader(self.current_class, self.current_class_real, self.current_class_proportion, False)
+            self.train_loader, self.test_laoder = getDataloader(client_dataset, self.batchsize, client_index, task_id)
         else:
-            self.train_loader = self._get_train_and_test_dataloader(self.current_class, self.current_class_real, self.current_class_proportion, True)
+            self.train_loader, self.test_laoder = getDataloader(client_dataset, self.batchsize, client_index, task_id)
 
-    def _get_train_and_test_dataloader(self, train_classes, train_classes_real, train_classes_proportion, mix):
-        if mix:
-            self.train_dataset.getTrainData(train_classes, self.exemplar_set, self.learned_classes, self.model.client_index, classes_real=train_classes_real, classes_proportion=train_classes_proportion, exe_class=self.learned_classes)
-            #self.train_dataset.getTrainData(train_classes, [], [])
-        else:
-            self.train_dataset.getTrainData(train_classes, [], [], self.model.client_index, classes_real=train_classes_real, classes_proportion=train_classes_proportion)
-
-        train_loader = DataLoader(dataset=self.train_dataset,
-                                  shuffle=True,
-                                  batch_size=self.batchsize,
-                                  num_workers=2,
-                                  pin_memory=True)
-
-        return train_loader
 
     # train model
     def train(self, ep_g, model_old):
@@ -254,13 +239,13 @@ class GLFC_model_hard:
                 loss_cur_sum, loss_mmd_sum = [], []
                 if epoch > 0:
                     scheduler.step()
-                for step, (indexs, images, target) in enumerate(self.train_loader):
+                for step, (images, target) in enumerate(self.train_loader):
                     if isinstance(self.device, int):
                         images, target = images.cuda(self.device), target.cuda(self.device)
                     else:
                         images, target = images.cuda(), target.cuda()
                     #print(images.shape)
-                    loss_value, loss_cur, loss_old = self._compute_loss(indexs, images, target)
+                    loss_value, loss_cur, loss_old = self._compute_loss(images, target)
 
                     if step % 2 == 0 and epoch % 2 == 0:
                         print('{}/{} {}/{} {} {} {}'.format(step, len(self.train_loader), epoch, self.epochs, loss_value, loss_cur, loss_old))
@@ -273,14 +258,14 @@ class GLFC_model_hard:
     def entropy_signal(self, loader):
         return True
 
-    def _compute_loss(self, indexs, imgs, label):
+    def _compute_loss(self, imgs, label):
         output_ori = self.model(imgs)
         output = torch.sigmoid(output_ori)
         target = get_one_hot(label, self.numclass, self.device)
         
         if self.old_model == None:
             if "weit" in self.model.args.method:
-                loss_cur = torch.mean(nn.CrossEntropyLoss()(output_ori, label))
+                loss_cur = torch.mean(nn.CrossEntropyLoss()(output_ori, label.long()))
             else:
                 loss_cur = torch.mean(F.binary_cross_entropy(output, target, reduction='none'))
             return loss_cur, 0, 0

@@ -7,7 +7,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 from torch.autograd import Variable
 import torch.optim as optim
-from iCIFAR100 import iCIFAR100
+from iCIFAR100c import iCIFAR100c
 from torch.utils.data import DataLoader
 import random
 from Fed_utils import * 
@@ -218,7 +218,7 @@ class FedSpace_model_hard:
                 batch_loss_terms = {name: [] for name in LOSS_KEYS}
                 if epoch > 0:
                     scheduler.step()
-                for batch_idx, (indexs, images, labels) in enumerate(self.train_loader):
+                for batch_idx, (images, labels) in enumerate(self.train_loader):
                     #print('{}/{} {}/{}'.format(batch_idx, len(self.train_loader), epoch, self.epochs), end='\r')
                     for lab in labels.tolist():
                         num_sample_class[lab] += 1
@@ -385,7 +385,7 @@ class FedSpace_model_hard:
         self.model = model_to_device(self.model, False, self.device)
         self.model.eval()
         with torch.no_grad():
-            for batch_idx, (indexs, images, target) in enumerate(self.train_loader):
+            for batch_idx, (images, target) in enumerate(self.train_loader):
                 if isinstance(self.device, int):
                     feature = self.model.feature_extractor(images.to(self.device))
                 else:

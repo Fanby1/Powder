@@ -268,7 +268,7 @@ class CFeD_hard:
             dis_loss = DistillationLoss()
             old_targets = []
             with torch.no_grad():
-                for batch_idx, (indexs, trains, labels) in enumerate(self.train_loader):
+                for batch_idx, (trains, labels) in enumerate(self.train_loader):
                     if isinstance(self.device, int):
                         trains, labels = trains.cuda(self.device), labels.cuda(self.device)
                     else:
@@ -322,7 +322,7 @@ class CFeD_hard:
                 batch_loss = []
                 if epoch > 0:
                     scheduler.step()
-                for batch_idx, (indexs, images, labels) in enumerate(self.train_loader):
+                for batch_idx, (images, labels) in enumerate(self.train_loader):
                     if batch_idx % 2 == 0 and epoch % 2 == 0:
                         print('{}/{} {}/{} for {}'.format(batch_idx, len(self.train_loader), epoch, self.epochs, self.review), end="\r")
                     if isinstance(self.device, int):
@@ -389,7 +389,7 @@ class CFeD_hard:
                 batch_loss = []
                 if epoch > 0:
                     scheduler.step()
-                for step, (indexs, images, target) in enumerate(self.train_loader):
+                for step, (images, target) in enumerate(self.train_loader):
                     if step % 2 == 0 and epoch % 2 == 0:
                         print('{}/{} {}/{} loss:{} for {} target:{}'.format(step, len(self.train_loader), epoch, self.epochs, loss, self.review, target.shape), end="\r")
                     if isinstance(self.device, int):

@@ -26,6 +26,8 @@ from utils.schedulers import CosineSchedule
 torch.nn.BCEWithLogitsLoss
 import dataloaders
 from dataloaders.utils import *
+from utils.utils import build_transform
+from dataloaders.utils import getDataloader
 
 class TripletLoss(torch.nn.Module):
     def __init__(self, margin=1.0):
@@ -58,7 +60,7 @@ def get_one_hot(target, num_class, device):
 
 class DualPrompt_hard:
 
-    def __init__(self, num_class, prompt_flag, prompt_param, task_size, batch_size, device, epochs, learning_rate, train_dataset, model_g, imbalance):
+    def __init__(self, num_class, prompt_flag, prompt_param, task_size, batch_size, device, epochs, learning_rate, model_g, imbalance):
         super(DualPrompt_hard, self).__init__()
         self.log = print
         self.prompt_flag = prompt_flag
@@ -70,7 +72,6 @@ class DualPrompt_hard:
         self.current_class = None
         self.last_class = None
         self.train_loader = None
-        self.train_dataset = train_dataset
         self.origin_train_dataset = None
         self.target_train_dataset = []
         self.origin_train_dataset_divide = None
@@ -105,9 +106,9 @@ class DualPrompt_hard:
         self.client_class_frequency = {}
         self.client_class_num_dict_last = None
         self.client_class_num_dict = None
-        self.transform = dataloaders.utils.get_transform(dataset=self.dataset, phase='train', aug=True, resize_imnet=True)
+        self.transform = build_transform(True, 224)
         
-    def beforeTrain(self, task_id_new, group, classes=None, client_index=-1, global_task_id_real=None, class_real=None):
+    def beforeTrain(self, task_id_new, group, classes=None, client_index=-1, global_task_id_real=None, client_mask=None, client_dataset=None):
         try:
             self.model.module.prompt.client_index = client_index
             self.model.module.client_index = client_index
@@ -132,22 +133,17 @@ class DualPrompt_hard:
                     self.learned_classes += self.last_class
                     self.learned_classes = sorted(list(set(self.learned_classes)))
                 
-                self.current_class = self.model.class_distribution[client_index][task_id_new]
+                self.current_class = client_mask[client_index][task_id_new]
                 classes_list = []
                 for i in self.current_class:
-                   classes_list.append(class_real[i])
-                   if class_real[i] not in self.client_class_frequency.keys():
-                       self.client_class_frequency[class_real[i]] = 1
+                   classes_list.append(i)
+                   if i not in self.client_class_frequency.keys():
+                       self.client_class_frequency[i] = 1
                    else:
-                       self.client_class_frequency[class_real[i]] = self.client_class_frequency[class_real[i]] + 1
+                       self.client_class_frequency[i] = self.client_class_frequency[i] + 1
                 
                 self.current_class = classes_list
-                self.current_class_real = self.model.class_distribution_real[client_index][task_id_new]
-                self.current_class_proportion = self.model.class_distribution_proportion[client_index][task_id_new]
-                if self.model.class_distribution_client_di is not None:
-                    self.class_distribution_client_di = self.model.class_distribution_client_di[client_index][task_id_new]
-                else:
-                    self.class_distribution_client_di = None
+                self.current_class_real = client_mask[client_index][task_id_new]
             
                 self.real_task_id = task_id_new
                 self.client_learned_task_id.append(task_id_new)
@@ -184,37 +180,14 @@ class DualPrompt_hard:
         self.model.current_class = self.current_class
         self.model.prompt.global_task_id_real = global_task_id_real
         self.model.set_client_class_min_output()
-        self.train_loader = self._get_train_and_test_dataloader(self.current_class, self.current_class_real, self.current_class_proportion,False)
-
-    
-    def _get_train_and_test_dataloader(self, train_classes, train_classes_real, train_classes_proportion, mix):
-        if mix:
-            #number_imbalance = self.train_dataset.getTrainImbalance(train_classes_real, self.exemplar_set, self.learned_classes, self.model.client_index)
-            #self.number_imbalance = torch.tensor(number_imbalance, requires_grad=False, device=self.device)
-            self.exemplar_set = []
-            for i in self.learned_classes:
-                self.exemplar_set.append(self.exemplar_dict[i])
-            self.train_dataset.getTrainData(train_classes, self.exemplar_set, self.learned_classes, self.model.client_index, classes_real=train_classes_real, classes_proportion=train_classes_proportion, class_distribution_client_di=self.class_distribution_client_di)
-        else:
-            #number_imbalance = self.train_dataset.getTrainImbalance(train_classes_real, [], [], self.model.client_index)
-            #self.number_imbalance = torch.tensor(number_imbalance, requires_grad=False, device=self.device)
-            self.train_dataset.getTrainData(train_classes, [], [], self.model.client_index, classes_real=train_classes_real, classes_proportion=train_classes_proportion, class_distribution_client_di=self.class_distribution_client_di)
-
-        #print(self.train_dataset.TrainData[0])
-        train_loader = DataLoader(dataset=self.train_dataset,
-                                  shuffle=True,
-                                  batch_size=self.batch_size,
-                                  num_workers=8,
-                                  pin_memory=True)
-
-        return train_loader
+        self.train_loader, self.test_loader = getDataloader(client_dataset, self.batch_size, client_index, task_id_new)
 
     def proto_save(self):
         self.model.eval()
         features = []
         labels = []
         with torch.no_grad():
-            for batch_idx, (indexs, images, target) in enumerate(self.train_loader):
+            for batch_idx, (images, target) in enumerate(self.train_loader):
                 if isinstance(self.device, int):
                     feature = self.model.feature_extractor_withprompt(images.to(self.device))
                     #feature = self.model.feature_extractor(images.to(self.device))
@@ -386,14 +359,14 @@ class DualPrompt_hard:
         self.model.train()
         #self.train_loader = self._get_train_and_test_dataloader(self.current_class, self.current_class_real, self.current_class_proportion, True)
     
-    def train(self, ep_g, model_old, model_g, group=1):
+    def train(self, ep_g, model_old, model_g, train_dataset, group=1):
         
         #self.model = model_to_device(self.model, False, self.device)
 
         self.model.train()
         self.model.ep_g = ep_g
         self.model.prompt.ep_g = ep_g
-        self.data_weighting(self.train_dataset)
+        self.data_weighting(train_dataset)
         if isinstance(self.device, int):
             if "CLsamefix" in self.model.args.method and ep_g >= 3:
                 params_to_opt = list(self.model.prompt.parameters())
@@ -439,7 +412,7 @@ class DualPrompt_hard:
                     loss_value_sum, normal_loss_sum, t_c2loss_sum, prompt_loss_sum, prelogits_disloss_sum, output_disloss_sum, ntd_loss_sum, align_loss_sum, len_sum = 0, 0, 0, 0, 0, 0, 0, 0, 0
                 else:
                     loss_value_sum, normal_loss_sum, t_c2loss_sum, prompt_loss_sum, prelogits_disloss_sum, output_disloss_sum, ntd_loss_sum, align_loss_sum, len_sum, logits_loss_for_divide_sum, repre_loss_for_divide_sum = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-                for step, (indexs, images, target) in enumerate(self.train_loader):
+                for images, target in self.train_loader:
                     
                     if isinstance(self.device, int):
                         images, target = images.cuda(self.device), target.cuda(self.device)
@@ -447,9 +420,9 @@ class DualPrompt_hard:
                         images, target = images.cuda(), target.cuda()
                     
                     if "classincremental" not in self.model.args.method:
-                        loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss, ntd_loss, align_loss, mean_aqk_list = self._compute_loss(indexs, images, target)
+                        loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss, ntd_loss, align_loss, mean_aqk_list = self._compute_loss(images, target)
                     else:
-                        loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss, ntd_loss, align_loss, mean_aqk_list, logits_loss_for_divide, repre_loss_for_divide = self._compute_loss(indexs, images, target)
+                        loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss, ntd_loss, align_loss, mean_aqk_list, logits_loss_for_divide, repre_loss_for_divide = self._compute_loss(images, target)
                    
 
                     loss_value_sum += loss_value
@@ -483,7 +456,7 @@ class DualPrompt_hard:
             else:
                 with torch.no_grad():
                     task_embedding = None
-                    for step, (indexs, images, target) in enumerate(self.train_loader):
+                    for step, (images, target) in enumerate(self.train_loader):
                         if isinstance(self.device, int):
                             images, target = images.cuda(self.device), target.cuda(self.device)
                         else:
@@ -529,7 +502,7 @@ class DualPrompt_hard:
                 origin_logits_label = None
             else:
                 origin_logits_label = None
-            for step, (indexs, images, target) in enumerate(origin_train_loader):
+            for step, (images, target) in enumerate(origin_train_loader):
                 if isinstance(self.device, int):
                     images, target = images.cuda(self.device), target.cuda(self.device)
                 else:
@@ -608,7 +581,7 @@ class DualPrompt_hard:
                     target_logits_label = None
                 else:
                     target_logits_label = None
-                for step, (indexs, images, target) in enumerate(target_train_loader):
+                for step, (images, target) in enumerate(target_train_loader):
                     if isinstance(self.device, int):
                         images, target = images.cuda(self.device), target.cuda(self.device)
                     else:
@@ -716,7 +689,7 @@ class DualPrompt_hard:
                 origin_loss_divide_sum, target_loss_divide_sum, origin_loss_sum, target_loss_sum, len_sum = 0, 0, 0, 0, 0
             else:
                 origin_loss_sum, target_loss_sum, len_sum = 0, 0, 0
-            for step, (origin_indexs, origin_images, origin_target) in enumerate(origin_train_loader):
+            for step, (origin_images, origin_target) in enumerate(origin_train_loader):
                 if isinstance(self.device, int):
                     origin_images, origin_target = origin_images.cuda(self.device), origin_target.cuda(self.device)
                 else:
@@ -840,7 +813,7 @@ class DualPrompt_hard:
             self.dw_k = self.dw_k.cuda()
 
 
-    def _compute_loss(self, indexs, imgs, targets):
+    def _compute_loss(self, imgs, targets):
         if isinstance(self.device, int):
             t_c2loss = torch.zeros((1,), requires_grad=True).cuda(self.device)
             output_disloss = torch.zeros((1,), requires_grad=True).cuda(self.device)
@@ -938,7 +911,7 @@ class DualPrompt_hard:
         
     
         
-    def _compute_loss_withmodel(self, model, indexs, imgs, targets):
+    def _compute_loss_withmodel(self, model, imgs, targets):
         
         if isinstance(self.device, int):
             t_c2loss = torch.zeros((1,), requires_grad=True).cuda(self.device)
@@ -1053,7 +1026,7 @@ class DualPrompt_hard:
 
     
     def calculate_distillation_weight(self, targets):
-        distillation_weight = self.model.prompt.fc_weight.detach().clone()[targets.view(-1, 1)]
+        distillation_weight = self.model.prompt.fc_weight.detach().clone()[targets.long().view(-1, 1)]
         distillation_weight, _ = torch.max(distillation_weight, dim=2)
         distillation_weight = 1 - distillation_weight
         distillation_weight = distillation_weight.squeeze()
@@ -1184,12 +1157,12 @@ class DualPrompt_hard:
         prompt_importance = []
         for w in prompt_weight:
             prompt_importance.append(torch.zeros(w.shape[1]).cuda(self.device))
-        for step, (indexs, images, target) in enumerate(self.train_loader):
+        for step, (images, target) in enumerate(self.train_loader):
             if isinstance(self.device, int):
                 images, target = images.cuda(self.device), target.cuda(self.device)
             else:
                 images, target = images.cuda(), target.cuda()
-            loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss = self._compute_loss_withmodel(model_importance, indexs, images, target)
+            loss_value, normal_loss, t_c2loss, prompt_loss, prelogits_disloss, output_disloss = self._compute_loss_withmodel(model_importance, images, target)
             
             loss_value.backward()
             for name, w, current_importance in zip(prompt_name, prompt_weight, prompt_importance):

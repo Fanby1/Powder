@@ -6,8 +6,8 @@ import numpy as np
 from torch.nn import functional as F
 from PIL import Image
 import torch.optim as optim
-from iCIFAR100 import iCIFAR100
-from torch.utils.data import DataLoader
+from iCIFAR100c import iCIFAR100c
+from torch.utils.data import DataLoader, random_split
 import random
 
 def setup_seed(seed):
@@ -78,7 +78,7 @@ def participant_exemplar_storing_fedspace(clients, num, model_g, old_client, tas
 
         
 
-def local_train_fcil(clients_index_push, clients, index, model_g, task_id, model_old, ep_g, old_client, client_index, global_task_id_real, class_real=None):
+def local_train_fcil(clients_index_push, clients, index, model_g, task_id, model_old, ep_g, old_client, client_index, global_task_id_real, client_mask, client_data):
     if index in clients_index_push:
         if "sharedcodap" in model_g.args.method and clients[index].model is not None:
             client_learned_global_task_id_saved = clients[index].model.prompt.client_learned_global_task_id
@@ -102,11 +102,11 @@ def local_train_fcil(clients_index_push, clients, index, model_g, task_id, model
             model_old = [clients[index].old_model, clients[index].old_model]
 
     if index in old_client:
-        clients[index].beforeTrain(task_id, 0, client_index, global_task_id_real, class_real)
+        clients[index].beforeTrain(task_id, 0, client_index, global_task_id_real, client_mask, client_data)
     else:
-        clients[index].beforeTrain(task_id, 1, client_index, global_task_id_real, class_real)
+        clients[index].beforeTrain(task_id, 1, client_index, global_task_id_real, client_mask, client_data)
 
-    clients[index].update_new_set(task_id, client_index)
+    clients[index].update_new_set(task_id, client_index, client_data)
     print(clients[index].signal)
     num_samples = clients[index].train(ep_g, model_old)
     local_model = clients[index].model.state_dict()
@@ -118,7 +118,7 @@ def local_train_fcil(clients_index_push, clients, index, model_g, task_id, model
 
     return local_model, proto_grad, num_samples
 
-def local_train_cprompt(clients_index_push, clients, index, model_g, task_id, model_old, ep_g, old_client, classes=None, global_task_id_real=None, class_real=None, consolidation=False):
+def local_train_cprompt(clients_index_push, clients, index, model_g, task_id, model_old, ep_g, old_client, classes=None, global_task_id_real=None, consolidation=False, client_mask=None, client_dataset=None, client_index=None, class_real=None):
     if index in clients_index_push:
         if model_g.args.prompt_flag == 'codap_2d_v2':
             client_learned_global_task_id_saved = clients[index].model.prompt.client_learned_global_task_id
@@ -136,9 +136,9 @@ def local_train_cprompt(clients_index_push, clients, index, model_g, task_id, mo
             clients[index].model.prompt.client_learned_global_task_id = client_learned_global_task_id_saved
 
     if index in old_client:
-        clients[index].beforeTrain(task_id, 0, classes, index, global_task_id_real, class_real)
+        clients[index].beforeTrain(task_id, 0, classes, index, global_task_id_real, client_mask, client_dataset)
     else:
-        clients[index].beforeTrain(task_id, 1, classes, index, global_task_id_real, class_real)
+        clients[index].beforeTrain(task_id, 1, classes, index, global_task_id_real, client_mask, client_dataset)
     if "extension" in model_g.args.method or "extencl" in model_g.args.method:
         clients[index].update_new_set(task_id, index, ep_g)
     if ep_g < 0:   
@@ -151,9 +151,9 @@ def local_train_cprompt(clients_index_push, clients, index, model_g, task_id, mo
         clients[index].model.prompt.save_extra_prompt()
 
     if index in old_client:
-        num_samples, local_optimizer, local_lr_schedule, current_class = clients[index].train(ep_g, model_old, model_g, 0)
+        num_samples, local_optimizer, local_lr_schedule, current_class = clients[index].train(ep_g, model_old, model_g, client_dataset[index][task_id], 0)
     else:
-        num_samples, local_optimizer, local_lr_schedule, current_class = clients[index].train(ep_g, model_old, model_g)
+        num_samples, local_optimizer, local_lr_schedule, current_class = clients[index].train(ep_g, model_old, model_g, client_dataset[index][task_id])
     #prompt_importance = clients[index].compute_prompt_importance()
     #clients[index].model.eval()
     #idx = clients[index].reorder_prompt(prompt_importance)
@@ -537,7 +537,7 @@ def FedAvg_our_v3(models, num_samples_list, client_index, class_distribution_cli
     #update_global(model_g_before, model_g, models, taskid_local, client_index, num_clients, global_update_lr, device, idxs)
     return model_g.state_dict()
 
-def FedAvg_our_v1(models, num_samples_list, client_index, class_distribution_client, newest_task_id, taskid_local, old_client_0, num_clients, model_g, global_update_lr, device, idxs, clients_learned_task_id, clients_learned_class, global_task_id_real, class_real, global_trained_task_id, global_class_output, models_model, clients_index_pull, w_g_last):
+def FedAvg_our_v1(models, num_samples_list, client_index, class_distribution_client, newest_task_id, taskid_local, old_client_0, num_clients, model_g, global_update_lr, device, idxs, clients_learned_task_id, clients_learned_class, global_task_id_real, global_trained_task_id, global_class_output, models_model, clients_index_pull, w_g_last):
     #print(taskid_local)
     task_frequency = {}
     class_frequency = {}
@@ -1078,7 +1078,7 @@ def model_global_eval(model_g, test_dataset, task_id, task_size, device, method,
     test_dataset.getTestData([0, task_size * (task_id + 1)])
     test_loader = DataLoader(dataset=test_dataset, shuffle=True, batch_size=64, num_workers=2, pin_memory=True)
     correct, total = 0, 0
-    for step, (indexs, imgs, labels) in enumerate(test_loader):
+    for step, (imgs, labels) in enumerate(test_loader):
         if isinstance(device, int):
             imgs, labels = imgs.cuda(device), labels.cuda(device)
         else:
@@ -1110,7 +1110,7 @@ def model_global_eval(model_g, test_dataset, task_id, task_size, device, method,
         test_dataset.getTestData([task_size * i, task_size * (i + 1)])
         test_loader = DataLoader(dataset=test_dataset, shuffle=True, batch_size=128, num_workers=2, pin_memory=True)
         correct, total = 0, 0
-        for setp, (indexs, imgs, labels) in enumerate(test_loader):
+        for setp, (imgs, labels) in enumerate(test_loader):
             if isinstance(device, int):
                 imgs, labels = imgs.cuda(device), labels.cuda(device)
             else:
@@ -1143,10 +1143,12 @@ def model_global_eval_hard(model_g, test_dataset, task_id, task_size, device, me
     #print(model_g.client_class_min_output)
     #print(model_g.client_index)
     #print(global_class_output)
-    test_dataset.getTestData_hard(global_class_output, global_class_output_real)
-    test_loader = DataLoader(dataset=test_dataset, shuffle=True, batch_size=32, num_workers=8, pin_memory=True)
+    train_dataset = test_dataset[task_id]
+    train_dataset, test_dataset = random_split(train_dataset, [int(len(train_dataset) * 0.7), len(train_dataset) - int(len(train_dataset) * 0.7)])
+            
+    test_loader = DataLoader(dataset=test_dataset, shuffle=True, batch_size=32, num_workers=0, pin_memory=True)
     correct, total = 0, 0
-    for step, (indexs, imgs, labels) in enumerate(test_loader):
+    for step, (imgs, labels) in enumerate(test_loader):
         if isinstance(device, int):
             imgs, labels = imgs.cuda(device), labels.cuda(device)
         else:
@@ -1237,7 +1239,7 @@ def model_global_eval_hard_privacy(model_g, train_dataset, test_dataset, task_id
     test_loader = DataLoader(dataset=train_dataset, shuffle=True, batch_size=32, num_workers=8, pin_memory=True)
     correct, confidence, entropy, modified_entropy, total = 0, 0, 0, 0, 0
     topk_confidence, topk_entropy = None, None
-    for step, (indexs, imgs, labels) in enumerate(test_loader):
+    for step, (imgs, labels) in enumerate(test_loader):
         if isinstance(device, int):
             imgs, labels = imgs.cuda(device), labels.cuda(device)
         else:
@@ -1286,7 +1288,7 @@ def model_global_eval_hard_privacy(model_g, train_dataset, test_dataset, task_id
     train_dataset.getTrainData(known_current_class, [], [], client_index, classes_real=known_current_class_real, classes_proportion=known_current_class_proportion)
     test_loader = DataLoader(dataset=train_dataset, shuffle=True, batch_size=32, num_workers=8, pin_memory=True)
     correct, confidence, entropy, modified_entropy, total, train_num_confidence, train_num_entropy = 0, 0, 0, 0, 0, 0, 0
-    for step, (indexs, imgs, labels) in enumerate(test_loader):
+    for step, (imgs, labels) in enumerate(test_loader):
         if isinstance(device, int):
             imgs, labels = imgs.cuda(device), labels.cuda(device)
         else:
@@ -1326,7 +1328,7 @@ def model_global_eval_hard_privacy(model_g, train_dataset, test_dataset, task_id
     test_dataset.getTestData_hard(known_current_class, known_current_class_real)
     test_loader = DataLoader(dataset=test_dataset, shuffle=True, batch_size=32, num_workers=8, pin_memory=True)
     correct, confidence, entropy, modified_entropy, total, train_num_confidence, train_num_entropy = 0, 0, 0, 0, 0, 0, 0
-    for step, (indexs, imgs, labels) in enumerate(test_loader):
+    for step, (imgs, labels) in enumerate(test_loader):
         if isinstance(device, int):
             imgs, labels = imgs.cuda(device), labels.cuda(device)
         else:
@@ -1366,7 +1368,7 @@ def model_global_eval_hard_privacy(model_g, train_dataset, test_dataset, task_id
     train_dataset.getTrainData(unknown_current_class, [], [], client_index, classes_real=unknown_current_class_real, classes_proportion=unknown_current_class_proportion)
     test_loader = DataLoader(dataset=train_dataset, shuffle=True, batch_size=32, num_workers=8, pin_memory=True)
     correct, confidence, entropy, modified_entropy, total, train_num_confidence, train_num_entropy = 0, 0, 0, 0, 0, 0, 0
-    for step, (indexs, imgs, labels) in enumerate(test_loader):
+    for step, (imgs, labels) in enumerate(test_loader):
         if isinstance(device, int):
             imgs, labels = imgs.cuda(device), labels.cuda(device)
         else:

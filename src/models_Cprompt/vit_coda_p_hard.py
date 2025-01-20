@@ -9,7 +9,8 @@ import numpy as np
 import math
 import copy
 from models_Cprompt.vit_coda_p import DualPrompt, L2P, CodaPrompt, CodaPrompt_weight, CodaPrompt_2d_v2
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset, random_split
+from dataloaders.cifar100_subset_spliter import Cifar100_Spliter
 
 DEBUG_METRICS=True
 
@@ -168,7 +169,7 @@ def tensor_prompt(a, b, c=None, ortho=False):
     return p        
 
 class ResNetZoo_hard(nn.Module):
-    def __init__(self, num_classes=10, pt=False, mode=1, prompt_flag=False, prompt_param=None, task_size=10, device='cuda:0', local_clients=10, num_clients=10, class_distribution=None, tasks_global=3, class_distribution_real=None, class_distribution_proportion=None, class_distribution_client_di=None, params=None, args=None):
+    def __init__(self, num_classes=10, pt=False, mode=1, prompt_flag=False, prompt_param=None, task_size=10, device='cuda:0', local_clients=10, num_clients=10, tasks_global=3, params=None, args=None):
         super(ResNetZoo_hard, self).__init__()
 
         # get last layer
@@ -181,10 +182,6 @@ class ResNetZoo_hard(nn.Module):
         self.task_id = None
         self.task_size = task_size
         self.client_index = -1
-        self.class_distribution = class_distribution
-        self.class_distribution_real = class_distribution_real
-        self.class_distribution_proportion = class_distribution_proportion
-        self.class_distribution_client_di = class_distribution_client_di
         self.client_class_min_output = []
         self.client_class_max_output = []
         self.global_class_max_output_previous = []
@@ -199,6 +196,8 @@ class ResNetZoo_hard(nn.Module):
         self.device = device
         self.num_clients = num_clients
         self.current_class = []
+        # no, self.client_mask = self.dataset_spliter.random_split()
+        # self.surro_data, self.test_data = self.dataset_spliter.process_testdata(3)
         #self.initial_promptchoosing = {}
 
         # get feature encoder
@@ -250,31 +249,45 @@ class ResNetZoo_hard(nn.Module):
         # feature encoder changes if transformer vs resnet
         self.feat = zoo_model
     
+    def split_dataset_by_target(self, dataset, class_real):
+        # 创建一个字典，用于存储每个类的索引
+        class_indices = {i: [] for i in class_real}
     
-    def calculate_prompt_choosing(self, train_dataset, c, t, trained_task_id, current_trained_task_id, finished_task):
+        # print("class_real", class_real)
+        # for idx, (_, target) in enumerate(dataset):
+        #     print(target, end=" ")
+        # 遍历数据集，收集每个类的索引
+        for idx, (_, target) in enumerate(dataset):
+            class_indices[target].append(idx)
+    
+        # 创建子数据集列表
+        subsets = {}
+        for class_id, indices in class_indices.items():
+            subsets[class_id] = Subset(dataset, indices)
+    
+        return subsets
+    
+    def calculate_prompt_choosing(self, c, t, trained_task_id, current_trained_task_id, 
+                                  finished_task, client_data, client_mask):
         with torch.no_grad():
             indices =[]
             for i in current_trained_task_id:
                 indices.append(trained_task_id.index(i))
             #print(indices)
             choosing_class = {}
-            classes = self.class_distribution[c][t]
-            classes_real = self.class_distribution_real[c][t]
-            classes_proportion = self.class_distribution_proportion[c][t]
-            if self.class_distribution_client_di is not None:
-                class_distribution_client_di = self.class_distribution_client_di[c][t]
-            else:
-                class_distribution_client_di = None
+            classes_real = client_mask[c][t]
+            train_dataset = client_data[c][t]
+            train_dataset, test_dataset = random_split(train_dataset, [int(len(train_dataset) * 0.7), len(train_dataset) - int(len(train_dataset) * 0.7)])
+            train_dataset_byclass = self.split_dataset_by_target(train_dataset, classes_real)
             mean_aqk_task = None
-            for i in range(len(classes)):
-                train_dataset.getTrainData([classes[i]], [], [], c, classes_real=[classes_real[i]], classes_proportion=classes_proportion, class_distribution_client_di=class_distribution_client_di)
-                train_loader = DataLoader(dataset=train_dataset,
+            for i in classes_real:
+                train_loader = DataLoader(dataset=train_dataset_byclass[i],
                                     shuffle=True,
                                     batch_size=self.args.batch_size,
-                                    num_workers=8,
+                                    num_workers=0,
                                     pin_memory=True)
                 mean_aqk_class = None
-                for step, (indexs, images, target) in enumerate(train_loader):
+                for images, target in train_loader:
                     if isinstance(self.device, int):
                         images, target = images.cuda(self.device), target.cuda(self.device)
                     else:
@@ -294,7 +307,7 @@ class ResNetZoo_hard(nn.Module):
                     else:
                         mean_aqk_class = torch.cat((mean_aqk_class, mean_aqk_list), dim=0)
                 mean_aqk_class = torch.mean(mean_aqk_class, dim=0)
-                choosing_class[classes[i]] = mean_aqk_class
+                choosing_class[i] = mean_aqk_class
                 if mean_aqk_task is None:
                     mean_aqk_task = mean_aqk_class.unsqueeze(0)
                 else:
@@ -303,7 +316,11 @@ class ResNetZoo_hard(nn.Module):
         
 
     
-    def updateweight_with_promptchoosing(self, clients_index, clients_index_push, old_client_0, train_dataset, new_task, task_id, models, global_trained_task_id, choosing, choosing_class, finished_task, finished_task_forchoosing, finished_class, global_task_id_real, class_real, args, ep_g):
+    def updateweight_with_promptchoosing(self, clients_index, clients_index_push, old_client_0, 
+                                         new_task, task_id, models, global_trained_task_id, 
+                                         choosing, choosing_class, finished_task, finished_task_forchoosing,
+                                         finished_class, global_task_id_real, args, ep_g, client_data, 
+                                         client_mask):
         #print(class_real)
         trained_task_id_previous = copy.deepcopy(global_trained_task_id)
         trained_task_id_current = copy.deepcopy(global_trained_task_id)
@@ -431,7 +448,7 @@ class ResNetZoo_hard(nn.Module):
                         choosing_, choosing_class_ = models[c].model.calculate_prompt_choosing(train_dataset, current_client_id, current_task_id, trained_task_id_current, trained_task_id_current, finished_task=finished_task)
                     choosing[global_task_id] = choosing_.detach().cpu()
                     if "full" not in self.args.method and "extension" not in self.args.method:
-                        for cl in self.class_distribution[c][models[c].real_task_id]:
+                        for cl in client_mask[c][models[c].real_task_id]:
                             choosing_class[cl] = choosing_class_[cl].detach().cpu()
                             finished_class[cl] = trained_task_id_current
                     else:
@@ -450,12 +467,12 @@ class ResNetZoo_hard(nn.Module):
                                 previous_global_task_id = models[c].real_task_id + 49
                         
                         if c in clients_index_push:
-                            previous_choosing_, previous_choosing_class_ = self.calculate_prompt_choosing(train_dataset, previous_client_id, previous_task_id, global_trained_task_id, trained_task_id_previous, finished_task=finished_task)
+                            previous_choosing_, previous_choosing_class_ = self.calculate_prompt_choosing(previous_client_id, previous_task_id, global_trained_task_id, trained_task_id_previous, finished_task=finished_task, client_data=client_data, client_mask=client_mask)
                         else:
-                            previous_choosing_, previous_choosing_class_ = models[c].model.calculate_prompt_choosing(train_dataset, previous_client_id, previous_task_id, global_trained_task_id, trained_task_id_previous, finished_task=finished_task)
+                            previous_choosing_, previous_choosing_class_ = models[c].model.calculate_prompt_choosing(previous_client_id, previous_task_id, global_trained_task_id, trained_task_id_previous, finished_task=finished_task, client_data=client_data, client_mask=client_mask)
                         choosing[previous_global_task_id] = previous_choosing_.detach().cpu()
                         if "full" not in self.args.method and "extension" not in self.args.method:
-                            for cl in self.class_distribution[c][models[c].real_task_id]:
+                            for cl in client_mask[c][models[c].real_task_id]:
                                 choosing_class[cl] = previous_choosing_class_[cl].detach().cpu()
                                 finished_class[cl] = trained_task_id_previous
                         else:
@@ -473,16 +490,22 @@ class ResNetZoo_hard(nn.Module):
                         else:
                             global_task_id = task_id + 49
                     if c in clients_index_push:
-                        choosing_, choosing_class_ = self.calculate_prompt_choosing(train_dataset, current_client_id, current_task_id, trained_task_id_current, trained_task_id_current, finished_task=finished_task)
+                        choosing_, choosing_class_ = self.calculate_prompt_choosing(
+                            current_client_id, current_task_id, trained_task_id_current, 
+                            trained_task_id_current, finished_task=finished_task, 
+                            client_data=client_data, client_mask=client_mask)
                     else:
-                        choosing_, choosing_class_ = models[c].model.calculate_prompt_choosing(train_dataset, current_client_id, current_task_id, trained_task_id_current, trained_task_id_current, finished_task=finished_task)
+                        choosing_, choosing_class_ = models[c].model.calculate_prompt_choosing(
+                            current_client_id, current_task_id, trained_task_id_current, 
+                            trained_task_id_current, finished_task=finished_task,
+                            client_data=client_data, client_mask=client_mask)
                     choosing[global_task_id] = choosing_.detach().cpu()
                     #print(c)
                     #print(task_id)
                     #print(choosing_class_.keys())
                     #print(self.class_distribution[c][task_id])
                     if "full" not in self.args.method and "extension" not in self.args.method:
-                        for cl in self.class_distribution[c][task_id]:
+                        for cl in client_mask[c][task_id]:
                             choosing_class[cl] = choosing_class_[cl].detach().cpu()
                             finished_class[cl] = trained_task_id_current
                     else:
@@ -728,8 +751,7 @@ class ResNetZoo_hard(nn.Module):
                     _, idx = self.prompt.weight[global_task_id].topk(self.params['topk_for_task_selection'])
                     finished_task_forchoosing[global_task_id] = idx
 
-        print(class_real)
-        return choosing, choosing_class, finished_task, finished_task_forchoosing, finished_class, global_task_id_real, class_real
+        return choosing, choosing_class, finished_task, finished_task_forchoosing, finished_class, global_task_id_real
 
 
     def Incremental_learning(self, task_id):
@@ -934,7 +956,7 @@ class ResNetZoo_hard(nn.Module):
                         #print(detect_task_id)
                         pass
                     for i in range(out.shape[0]):
-                        detect_class_list = self.class_distribution[int(detect_task_id[i] % self.args.num_clients)][int(detect_task_id[i] // self.args.num_clients)]
+                        detect_class_list = client_mask[int(detect_task_id[i] % self.args.num_clients)][int(detect_task_id[i] // self.args.num_clients)]
                         sample_class_min_output = sorted(set(self.total_class_list)-set(detect_class_list))
                         out[i,sample_class_min_output] = -float('inf')
 
@@ -952,7 +974,7 @@ class ResNetZoo_hard(nn.Module):
                         #print(detect_task_id)
                         pass
                     for i in range(out.shape[0]):
-                        detect_class_list = self.class_distribution[int(detect_task_id[i] % self.args.num_clients)][int(detect_task_id[i] // self.args.num_clients)]
+                        detect_class_list = client_mask[int(detect_task_id[i] % self.args.num_clients)][int(detect_task_id[i] // self.args.num_clients)]
                         sample_class_min_output = sorted(set(self.total_class_list)-set(detect_class_list))
                         out[i,sample_class_min_output] = -float('inf')
                 else:
@@ -1035,5 +1057,5 @@ def get_one_hot(target, num_class, device):
     one_hot=one_hot.scatter(dim=1,index=target.long(),value=1.)
     return one_hot
 
-def vit_pt_imnet_hard(out_dim, block_division = None, prompt_flag = 'None', prompt_param=None, task_size=10, device='cuda:0', local_clients = 10, num_clients=10, class_distribution=None, tasks_global=3, class_distribution_real=None, class_distribution_proportion=None, class_distribution_client_di=None, params=None, args=None):
-    return ResNetZoo_hard(num_classes=out_dim, pt=True, mode=0, prompt_flag=prompt_flag, prompt_param=prompt_param, task_size=task_size, device=device, local_clients=local_clients, num_clients=num_clients, class_distribution=class_distribution, tasks_global=tasks_global, class_distribution_real=class_distribution_real, class_distribution_proportion=class_distribution_proportion, class_distribution_client_di=class_distribution_client_di, params=params, args=args)
+def vit_pt_imnet_hard(out_dim, block_division = None, prompt_flag = 'None', prompt_param=None, task_size=10, device='cuda:0', local_clients = 10, num_clients=10, tasks_global=3, params=None, args=None):
+    return ResNetZoo_hard(num_classes=out_dim, pt=True, mode=0, prompt_flag=prompt_flag, prompt_param=prompt_param, task_size=task_size, device=device, local_clients=local_clients, num_clients=num_clients, tasks_global=tasks_global, params=params, args=args)

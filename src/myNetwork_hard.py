@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 class network_hard(nn.Module):
 
-    def __init__(self, numclass, feature_extractor, class_distribution, class_distribution_real=None, class_distribution_proportion=None, args=None):
+    def __init__(self, numclass, feature_extractor, args=None):
         super(network_hard, self).__init__()
         self.args = args
         if "sharedencoder" in self.args.method:
@@ -29,9 +29,6 @@ class network_hard(nn.Module):
         self.fc = nn.Linear(768, numclass, bias=True)
         self.client_fc = nn.Linear(768, self.args.class_per_task, bias=True)
         self.aggregate_weight = torch.nn.Parameter(torch.FloatTensor(int(self.args.numclass/self.args.class_per_task), int(self.args.numclass/self.args.class_per_task)).uniform_(1, 1), requires_grad=True)
-        self.class_distribution = class_distribution
-        self.class_distribution_real = class_distribution_real
-        self.class_distribution_proportion = class_distribution_proportion
         self.task_id = 0
         self.client_index = -1
         #self.client_class_output = []
