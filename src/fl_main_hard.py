@@ -147,9 +147,21 @@ def main():
     if args.dataset == 'CIFAR100':
         dataset_spliter = Cifar100_Spliter(client_num=args.num_clients, task_num=args.task_size,
                                                          private_class_num=args.private_class_num,
-                                                         input_size=args.input_size)
+                                                         input_size=224)
         
-        clinet_dataset, client_mask = dataset_spliter.random_split()
+        client_data, client_mask = dataset_spliter.random_split()
+        client_data_train = []
+        client_data_test = []
+        for subset in client_data:
+            temp_train = []
+            temp_test =[]
+            for data in subset:
+                train_dataset, test_dataset = random_split(data, [int(len(data) * 0.7), len(data) - int(len(data) * 0.7)])
+                temp_train.append(train_dataset)
+                temp_test.append(test_dataset)
+            client_data_train.append(temp_train)
+            client_data_test.append(temp_test)
+            
         surro_data, test_data = dataset_spliter.process_testdata(5)
         surro_data = iCIFAR100c(subset=surro_data)
         
@@ -160,6 +172,14 @@ def main():
         
         client_data, client_mask = dataset_spliter.random_split()
         args.nb_classes = 200
+        
+        client_data_train = []
+        client_data_test = []
+        for data in client_data:
+            train_dataset, test_dataset = random_split(data, [int(len(data) * 0.7), len(data) - int(len(data) * 0.7)])
+    
+            client_data_train.append(train_dataset)
+            client_data_test.append(test_dataset)
         surro_data, test_data = dataset_spliter.process_testdata(5)
         surro_data = iCIFAR100c(subset=surro_data)
     
@@ -409,7 +429,7 @@ def main():
                 clients_index, clients_index_push, old_client_0, new_task, 
                 task_id, models, global_trained_task_id_nosame, choosing, choosing_class, 
                 finished_task, finished_task_forchoosing, finished_class, global_task_id_real, 
-                args, ep_g, client_data, client_mask)
+                args, ep_g, client_data_train, client_mask)
         if "cprompt" in args.method or "sharedcodap" in args.method:
             model_g.prompt.global_task_id_real = global_task_id_real
         else:
@@ -488,25 +508,25 @@ def main():
         w_g_not_trained = copy.deepcopy(model_g.state_dict())
         for c in clients_index:
             if "fcil" in args.method:
-                local_model, proto_grad, num_samples = local_train_fcil(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, c, global_task_id_real=global_task_id_real, client_mask=client_mask, client_data=client_data)
+                local_model, proto_grad, num_samples = local_train_fcil(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, c, global_task_id_real=global_task_id_real, client_mask=client_mask, client_data=client_data_train)
                 if "sharedcodap" in args.method:
                     taskid_local.append(models[c].model.prompt.task_id)
             elif "cprompt" in args.method:
                 if (ep_g + 1) % args.tasks_global == 0 and ("extension" in args.method or "extencl" in args.method) and c in old_client_1_temp and client_finish_task_num[c] >= 3 and args.prompt_flag == 'codap_2d_v2':
-                    local_model, proto_grad, num_samples, local_optimizer, local_lr_schedule, current_classes, idx, client_learned_task_id, global_task_id_real, global_trained_task_id = local_train_cprompt(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, global_task_id_real=global_task_id_real, consolidation=True, client_mask=client_mask, client_dataset=client_data)
+                    local_model, proto_grad, num_samples, local_optimizer, local_lr_schedule, current_classes, idx, client_learned_task_id, global_task_id_real, global_trained_task_id = local_train_cprompt(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, global_task_id_real=global_task_id_real, consolidation=True, client_mask=client_mask, client_dataset=client_data_train)
                 else:
-                    local_model, proto_grad, num_samples, local_optimizer, local_lr_schedule, current_classes, idx, client_learned_task_id, global_task_id_real, global_trained_task_id = local_train_cprompt(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, global_task_id_real=global_task_id_real, consolidation=False, client_mask=client_mask, client_dataset=client_data)
+                    local_model, proto_grad, num_samples, local_optimizer, local_lr_schedule, current_classes, idx, client_learned_task_id, global_task_id_real, global_trained_task_id = local_train_cprompt(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, global_task_id_real=global_task_id_real, consolidation=False, client_mask=client_mask, client_dataset=client_data_train)
                 taskid_local.append(models[c].model.prompt.task_id)
                 clients_learned_task_id.append(client_learned_task_id)
                 clients_learned_class.append(models[c].model.learned_classes)
             elif "dwl" in args.method:
                 local_model, proto_grad, num_samples = local_train_dwl(models, c, model_g, task_id, model_old, ep_g, old_client_0)           
             elif "cfed" in args.method:
-                local_model, proto_grad, average_loss, num_samples = local_train_cfed(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, old_client_0_review, global_task_id_real, client_mask=client_mask, client_data=client_data)       
+                local_model, proto_grad, average_loss, num_samples = local_train_cfed(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, old_client_0_review, global_task_id_real, client_mask=client_mask, client_data=client_data_train)       
                 m_local.append(models[c].model)
                 taskid_local.append(models[c].model.task_id)            
             elif "fedspace" in args.method:
-                local_model, proto_grad, num_samples, num_sample_class, radius, prototype = local_train_fedspace(clients_index_push, models, c, model_g, task_id, model_old, old_client_0, proto_global, radius_global, global_task_id_real, ep_g, client_mask=client_mask, client_data=client_data)
+                local_model, proto_grad, num_samples, num_sample_class, radius, prototype = local_train_fedspace(clients_index_push, models, c, model_g, task_id, model_old, old_client_0, proto_global, radius_global, global_task_id_real, ep_g, client_mask=client_mask, client_data=client_data_train)
                 proto_locals[c] = {'sample_num': num_samples,
                                     'prototype': prototype,
                                     'num_samples_class': num_sample_class}
@@ -514,10 +534,10 @@ def main():
                                           'radius': radius}
                 taskid_local.append(models[c].model.task_id)
             else:
-                local_model, proto_grad, num_samples = local_train_fcil(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, c, global_task_id_real=global_task_id_real, client_mask=client_mask, client_data=client_data)
+                local_model, proto_grad, num_samples = local_train_fcil(clients_index_push, models, c, model_g, task_id, model_old, ep_g, old_client_0, c, global_task_id_real=global_task_id_real, client_mask=client_mask, client_data=client_data_train)
             if ((ep_g + 1) % args.tasks_global == 0) : # and ("direct" in args.method or "FLorigin" in args.method or "notran" in args.method)):
                 # 在当前任务上的效果
-                acc_global, accs_global = model_global_eval_hard(models[c].model, client_data, task_id,
+                acc_global, accs_global = model_global_eval_hard(models[c].model, client_data_test[c], task_id,
                                                                  args.task_size, args.device, args.method, 
                                                                  int(args.epochs_global / args.tasks_global), 
                                                                  models[c].current_class, models[c].current_class_real)
@@ -526,14 +546,35 @@ def main():
                 out_file.write(log_str + '\n')
                 out_file.flush()
                 # 在第零个任务上的效果
-                acc_global, accs_global = model_global_eval_hard(models[c].model, client_data, 0, 
+                client_index = c
+                model_task_id = 0
+                current_class = client_mask[client_index][model_task_id]
+                model_for_eval = copy.deepcopy(models[client_index].model)
+                model_for_eval.client_index = client_index
+                if "cprompt" in args.method or "sharedcodap" in args.method:
+                    model_for_eval.prompt.client_index = client_index
+                    model_for_eval.prompt.task_id = model_task_id
+                if ("codap_2d_v2" in args.prompt_flag) and "cprompt" in args.method:
+                    model_for_eval.prompt.trained_task_id_forchoosing = finished_task_forchoosing[i]
+                    model_for_eval.prompt.trained_task_id = global_trained_task_id
+                if "weit" in args.method:
+                    model_for_eval.trained_task_id = [ph for ph in global_trained_task_id if (ph // args.num_clients) <= (i // args.num_clients)]
+                    model_for_eval.set_global_class_min_output(global_class_output[0: len(model_for_eval.trained_task_id) * args.class_per_task], global_class_output[0: len(model_for_eval.trained_task_id) * args.class_per_task])
+                
+                client_class_min_output = sorted(list(set(list(range(args.numclass)))-set(current_class)))
+                client_class_max_output = current_class
+                model_for_eval.client_class_min_output = client_class_min_output
+                model_for_eval.client_class_max_output = client_class_max_output
+                
+                acc_global, accs_global = model_global_eval_hard(model_for_eval, client_data_test[c], 0, 
                                                                  args.task_size, args.device, args.method, 
                                                                  int(args.epochs_global / args.tasks_global), 
                                                                  models[c].current_class, models[c].current_class_real)
                 log_str = 'Client: {}, Task: {}, Round: {} Accuracy = {:.2f}% = Accuracys = {}'\
-                                            .format(c, models[c].model.task_id, ep_g, acc_global, accs_global)
+                                            .format(c, 0, ep_g, acc_global, accs_global)
                 out_file.write(log_str + '\n')
                 out_file.flush()
+                del model_for_eval
                 
             
             w_local.append(local_model)
@@ -630,7 +671,7 @@ def main():
     
         if (ep_g + 1) % args.tasks_global == 0 and "direct" not in args.method and "notran" not in args.method:
             print("----------------------------------global eval----------------------------------------")
-            out_file.write("----------------------------------global eval----------------------------------------")
+            out_file.write("----------------------------------global eval----------------------------------------\n")
             out_file.flush()
             acc_global_list = []
             model_for_eval = None
@@ -695,27 +736,17 @@ def main():
                     print('powder Client: {}, Task: {}, Round: {} Accuracy = {:.2f}% = Accuracys = {}'.format(client_index, model_task_id, ep_g, acc_global, accs_global))
                 else:
                     # 当前任务上的效果
-                    acc_global, accs_global = model_global_eval_hard(model_for_eval, client_data[client_index], model_task_id, args.task_size, args.device, args.method, int(args.epochs_global / args.tasks_global), current_class, current_class_real)
+                    acc_global, accs_global = model_global_eval_hard(model_for_eval, client_data_test[client_index], model_task_id, args.task_size, args.device, args.method, int(args.epochs_global / args.tasks_global), current_class, current_class_real)
                     acc_global_list.append(acc_global)
                     log_str = 'Client: {}, Task: {}, Round: {} Accuracy = {:.2f}% = Accuracys = {}'\
                                                         .format(client_index, model_task_id, ep_g, acc_global, accs_global)
                     out_file.write(log_str + '\n')
                     out_file.flush()
                     print('powder Client: {}, Task: {}, Round: {} Accuracy = {:.2f}% = Accuracys = {}'.format(client_index, model_task_id, ep_g, acc_global, accs_global))
-                    
-                    # 0号任务上的效果
-                    acc_global, accs_global = model_global_eval_hard(model_for_eval, client_data[client_index], 0, args.task_size, args.device, args.method, int(args.epochs_global / args.tasks_global), current_class, current_class_real)
-                    # acc_global_list.append(acc_global)
-                    log_str = 'Client: {}, Task: {}, Round: {} Accuracy = {:.2f}% = Accuracys = {}'\
-                                                        .format(client_index, model_task_id, ep_g, acc_global, accs_global)
-                    out_file.write(log_str + '\n')
-                    out_file.flush()
-                    print('powder Client: {}, Task: {}, Round: {} Accuracy = {:.2f}% = Accuracys = {}'.format(client_index, 0, ep_g, acc_global, accs_global))
-            
             del model_for_eval
             nni.report_intermediate_result({'default': sum(acc_global_list) / len(acc_global_list)})
             print("----------------------------------local eval----------------------------------------")
-            out_file.write("----------------------------------local eval----------------------------------------")
+            out_file.write("----------------------------------local eval----------------------------------------\n")
             out_file.flush()
         
         for c in clients_index_push:

@@ -7,7 +7,7 @@ from torch.nn import functional as F
 from PIL import Image
 import torch.optim as optim
 from iCIFAR100c import iCIFAR100c
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 import random
 
 def setup_seed(seed):
@@ -1143,8 +1143,7 @@ def model_global_eval_hard(model_g, test_dataset, task_id, task_size, device, me
     #print(model_g.client_class_min_output)
     #print(model_g.client_index)
     #print(global_class_output)
-    train_dataset = test_dataset[task_id]
-    train_dataset, test_dataset = random_split(train_dataset, [int(len(train_dataset) * 0.7), len(train_dataset) - int(len(train_dataset) * 0.7)])
+    test_dataset = test_dataset[task_id]
             
     test_loader = DataLoader(dataset=test_dataset, shuffle=True, batch_size=32, num_workers=0, pin_memory=True)
     correct, total = 0, 0

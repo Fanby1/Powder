@@ -14,7 +14,7 @@ def args_parser():
     parser.add_argument('--device', nargs="+", type=int, default=[0, 1, 2, 3], help="GPU ID, -1 for CPU")
     parser.add_argument('--batch_size', type=int, default=64, help='size of mini-batch')
     parser.add_argument('--task_size', type=int, default=5, help='number of classes each task')
-    parser.add_argument('--seed', type=int, default=2021, help='random seed')
+    parser.add_argument('--seed', type=int, default=1999, help='random seed')
     parser.add_argument('--memory_size', type=int, default=500, help='size of exemplar memory')
     parser.add_argument('--epochs_local', type=int, default=20, help='local epochs of each global round')
     parser.add_argument('--learning_rate', type=float, default=2.0, help='learning rate')
@@ -27,7 +27,7 @@ def args_parser():
     #CODAP: [100, 8, 1, 0, 0, 6] Dual: [25, 20, 1, 0, 0, 10] L2P: [20, 20, 1, 0, 0, 6] CODAP_ours_v1: [25, 10, 10, 8, 0, 0, 6]
     parser.add_argument('--prompt_flag', type=str, default='codap', help='method of prompt')
     parser.add_argument('--global_weight', type=float, default=0.5, help="weight of the global model")
-    parser.add_argument('--private_class_num', default=40, type=int, nargs="+", help='the private class for every client')
+    parser.add_argument('--private_class_num', default=15, type=int, nargs="+", help='the private class for every client')
     parser.add_argument('--imput_size', default=224, type=int, nargs="+", help='the input size of the model')
     #global_weight
     parser.add_argument('--centralized_pretrain', action='store_true', default=False, help="whether pretrain")   

@@ -15,7 +15,7 @@ from Fed_utils import *
 import dataloaders
 from dataloaders.utils import *
 from utils.schedulers import CosineSchedule
-from dataloaders.utils import getDataloader
+from dataloaders.utils import getDataloader, split_dataset_by_target
 
 def get_one_hot(target, num_class, device):
     if isinstance(device, int):
@@ -67,7 +67,6 @@ class GLFC_model_hard:
         self.current_class = None
         self.last_class = None
         self.last_class_real = None
-        self.last_class_proportion = None
         self.task_id_old = -1
         self.device = device
         self.last_entropy = 0
@@ -93,7 +92,6 @@ class GLFC_model_hard:
                 self.signal = True
                 if self.current_class != None:
                     self.last_class = self.current_class
-                    self.last_class_proportion = self.current_class_proportion
                     self.last_class_real = self.current_class_real
                 self.current_class = client_mask[client_index][task_id_new]
                 #TODO:same task
@@ -117,7 +115,6 @@ class GLFC_model_hard:
             else:
                 self.last_class = None
                 self.last_class_real = None
-                self.last_class_proportion = None
                 try:
                     if "sharedcodap" in self.model.args.method:
                         self.model.module.prompt.task_id = self.real_task_id
@@ -153,9 +150,9 @@ class GLFC_model_hard:
         
             m = int(self.memory_size / self.learned_numclass)
             self._reduce_exemplar_sets(m)
-            for i in self.last_class: 
-                images = client_dataset[client_index][task_id].get_image_class(self.last_class_real[self.last_class.index(i)])
-                self._construct_exemplar_set(images, m)
+            images_list = split_dataset_by_target(client_dataset[client_index][task_id - 1], self.last_class)
+            for target in self.last_class: 
+                self._construct_exemplar_set(images_list[target], m)
 
         self.model.train()
         if "sharedencoder" in self.model.args.method and "weit" in self.model.args.method:
@@ -375,7 +372,7 @@ class GLFC_model_hard:
         elif self.dataset == 'ImageNet_R':
             data = transform(Image.fromarray(jpg_image_to_array(images[0]))).unsqueeze(0)
         else:
-            data = transform(Image.fromarray(images[0])).unsqueeze(0)
+            data = transform(Image.fromarray(images[0][0].numpy())).unsqueeze(0)
         for index in range(1, len(images)):
             if self.dataset == 'MNIST':
                 data = torch.cat((data, self.transform(Image.fromarray(images[index])).unsqueeze(0).expand(1, 3, data.size(2), data.size(3))), dim=0)

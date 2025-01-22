@@ -1,0 +1,17 @@
+python fl_main_hard.py \
+  --device 0 \
+  --global_update_lr 100 \
+  --img_size 224 \
+  --numclass 500 \
+  --class_per_task 20 \
+  --dataset CIFAR100 \
+  --easy 0 \
+  --tasks_global 5 \
+  --num_clients 5 \
+  --epochs_global 25 \
+  --local_client 5 \
+  --learning_rate 0.005 \
+  --method fed_cprompt \
+  --batch_size 64 \
+  --epochs_local 50 \
+  --global_weight 1

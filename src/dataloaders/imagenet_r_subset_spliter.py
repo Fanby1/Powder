@@ -31,8 +31,8 @@ class ImagenetR_Spliter():
 
         self.private_class_num = private_class_num
         self.input_size = input_size
-        self.Imagenet_R = Imagenet_R(root='C:/Users/Admin/datasets', train=True, download=True)
-        self.Imagenet_R_test = Imagenet_R(root='C:/Users/Admin/datasets', train=False, download=True)
+        self.Imagenet_R = Imagenet_R(root='/root/autodl-tmp/datasets', train=True, download=True)
+        self.Imagenet_R_test = Imagenet_R(root='/root/autodl-tmp/datasets', train=False, download=True)
 
 
 

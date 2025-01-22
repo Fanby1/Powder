@@ -129,7 +129,6 @@ class DualPrompt_hard:
                 if self.current_class != None:
                     self.last_class = self.current_class
                     self.last_class_real = self.current_class_real
-                    self.last_class_proportion = self.current_class_proportion
                     self.learned_classes += self.last_class
                     self.learned_classes = sorted(list(set(self.learned_classes)))
                 

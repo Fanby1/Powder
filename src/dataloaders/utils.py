@@ -14,7 +14,7 @@ import PIL.ImageEnhance
 import PIL.ImageDraw
 from PIL import Image
 import torch
-from torch.utils.data import random_split, DataLoader, Dataset
+from torch.utils.data import random_split, DataLoader, Dataset, Subset
 
 dataset_stats = {
     'CIFAR100': {'mean': (0.5070751592371323, 0.48654887331495095, 0.4409178433670343),
@@ -168,3 +168,21 @@ def getDataloader(client_dataset, batch_size, client_index, task_id):
 								  pin_memory=True)
 
     return train_loader, test_laoder
+
+def split_dataset_by_target(dataset, class_real):
+    # 创建一个字典，用于存储每个类的索引
+    class_indices = {i: [] for i in class_real}
+
+    # print("class_real", class_real)
+    # for idx, (_, target) in enumerate(dataset):
+    #     print(target, end=" ")
+    # 遍历数据集，收集每个类的索引
+    for idx, (_, target) in enumerate(dataset):
+        class_indices[target].append(idx)
+
+    # 创建子数据集列表
+    subsets = {}
+    for class_id, indices in class_indices.items():
+        subsets[class_id] = Subset(dataset, indices)
+
+    return subsets

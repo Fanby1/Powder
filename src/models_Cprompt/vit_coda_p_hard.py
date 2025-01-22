@@ -11,6 +11,7 @@ import copy
 from models_Cprompt.vit_coda_p import DualPrompt, L2P, CodaPrompt, CodaPrompt_weight, CodaPrompt_2d_v2
 from torch.utils.data import DataLoader, Subset, random_split
 from dataloaders.cifar100_subset_spliter import Cifar100_Spliter
+from dataloaders.utils import split_dataset_by_target
 
 DEBUG_METRICS=True
 
@@ -249,24 +250,6 @@ class ResNetZoo_hard(nn.Module):
         # feature encoder changes if transformer vs resnet
         self.feat = zoo_model
     
-    def split_dataset_by_target(self, dataset, class_real):
-        # 创建一个字典，用于存储每个类的索引
-        class_indices = {i: [] for i in class_real}
-    
-        # print("class_real", class_real)
-        # for idx, (_, target) in enumerate(dataset):
-        #     print(target, end=" ")
-        # 遍历数据集，收集每个类的索引
-        for idx, (_, target) in enumerate(dataset):
-            class_indices[target].append(idx)
-    
-        # 创建子数据集列表
-        subsets = {}
-        for class_id, indices in class_indices.items():
-            subsets[class_id] = Subset(dataset, indices)
-    
-        return subsets
-    
     def calculate_prompt_choosing(self, c, t, trained_task_id, current_trained_task_id, 
                                   finished_task, client_data, client_mask):
         with torch.no_grad():
@@ -277,8 +260,7 @@ class ResNetZoo_hard(nn.Module):
             choosing_class = {}
             classes_real = client_mask[c][t]
             train_dataset = client_data[c][t]
-            train_dataset, test_dataset = random_split(train_dataset, [int(len(train_dataset) * 0.7), len(train_dataset) - int(len(train_dataset) * 0.7)])
-            train_dataset_byclass = self.split_dataset_by_target(train_dataset, classes_real)
+            train_dataset_byclass = split_dataset_by_target(train_dataset, classes_real)
             mean_aqk_task = None
             for i in classes_real:
                 train_loader = DataLoader(dataset=train_dataset_byclass[i],
