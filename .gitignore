@@ -8,3 +8,4 @@ src/compare/*
 .git/*
 src/DomainNet.zip
 __pycache__/
+src/local_datasets/
