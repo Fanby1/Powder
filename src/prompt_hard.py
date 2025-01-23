@@ -179,7 +179,7 @@ class DualPrompt_hard:
         self.model.current_class = self.current_class
         self.model.prompt.global_task_id_real = global_task_id_real
         self.model.set_client_class_min_output()
-        self.train_loader, self.test_loader = getDataloader(client_dataset, self.batch_size, client_index, task_id_new)
+        self.train_loader = getDataloader(client_dataset, self.batch_size, client_index, task_id_new)
 
     def proto_save(self):
         self.model.eval()

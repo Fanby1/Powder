@@ -137,7 +137,7 @@ class GLFC_model_hard:
         if "sharedcodap" in self.model.args.method:
             self.model.prompt.client_learned_global_task_id = self.client_learned_global_task_id
             self.model.prompt.global_task_id_real = global_task_id_real
-        self.train_loader, self.test_laoder = getDataloader(client_dataset, self.batchsize, client_index, self.real_task_id)
+        self.train_loader = getDataloader(client_dataset, self.batchsize, client_index, self.real_task_id)
         
     def update_new_set(self, task_id, client_index, client_dataset):
         self.model = model_to_device(self.model, False, self.device)
@@ -166,9 +166,9 @@ class GLFC_model_hard:
         self.model.set_learned_unlearned_class(sorted(list(set(self.current_class + self.learned_classes))))
         self.model.current_class = self.current_class
         if "notran" in self.model.args.method:
-            self.train_loader, self.test_laoder = getDataloader(client_dataset, self.batchsize, client_index, task_id)
+            self.train_loader = getDataloader(client_dataset, self.batchsize, client_index, task_id)
         else:
-            self.train_loader, self.test_laoder = getDataloader(client_dataset, self.batchsize, client_index, task_id)
+            self.train_loader = getDataloader(client_dataset, self.batchsize, client_index, task_id)
 
 
     # train model
@@ -288,7 +288,7 @@ class GLFC_model_hard:
                 loss_old = 0
                 loss_proxi = 0
             elif "weit" in self.model.args.method:
-                loss_cur = torch.mean(nn.CrossEntropyLoss()(output_ori, label))
+                loss_cur = torch.mean(nn.CrossEntropyLoss()(output_ori, label.long()))
                 loss_old = 0
                 if "sharedfc" in self.model.args.method:
                     loss_proxi = torch.square(self.model.fc.weight.data[self.learned_classes] - self.old_model.fc.weight.data[self.learned_classes]).sum() + torch.square(self.model.client_fc.weight.data - self.old_model.client_fc.weight.data).sum()
@@ -372,7 +372,8 @@ class GLFC_model_hard:
         elif self.dataset == 'ImageNet_R':
             data = transform(Image.fromarray(jpg_image_to_array(images[0]))).unsqueeze(0)
         else:
-            data = transform(Image.fromarray(images[0][0].numpy())).unsqueeze(0)
+            numpy_image = images[0][0].permute(1, 2, 0).numpy().astype(np.uint8)
+            data = transform(Image.fromarray(numpy_image)).unsqueeze(0)
         for index in range(1, len(images)):
             if self.dataset == 'MNIST':
                 data = torch.cat((data, self.transform(Image.fromarray(images[index])).unsqueeze(0).expand(1, 3, data.size(2), data.size(3))), dim=0)
@@ -381,12 +382,14 @@ class GLFC_model_hard:
             elif self.dataset == 'ImageNet_R':
                 data = torch.cat((data, self.transform(Image.fromarray(jpg_image_to_array(images[0]))).unsqueeze(0)), dim=0)
             else:
-                data = torch.cat((data, self.transform(Image.fromarray(images[index])).unsqueeze(0)), dim=0)
+                numpy_image = images[index][0].permute(1, 2, 0).numpy().astype(np.uint8)
+                data = torch.cat((data, transform(Image.fromarray(numpy_image)).unsqueeze(0)), dim=0)
         return data
 
     def compute_class_mean(self, images, transform):
         if isinstance(self.device, int):
             x = self.Image_transform(images, transform).cuda(self.device)
+            # x = transform(Image.fromarray(images[0])).unsqueeze(0).cuda(self.device)
         else:
             x = self.Image_transform(images, transform).cuda()
         feature_extractor_output = F.normalize(self.model.feature_extractor(x).detach()).cpu().numpy()

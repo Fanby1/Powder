@@ -548,6 +548,7 @@ def main():
                 # 在第零个任务上的效果
                 client_index = c
                 model_task_id = 0
+                i = model_task_id * args.num_clients + c
                 current_class = client_mask[client_index][model_task_id]
                 model_for_eval = copy.deepcopy(models[client_index].model)
                 model_for_eval.client_index = client_index

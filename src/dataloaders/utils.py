@@ -151,23 +151,14 @@ def build_transform(is_train,input_size):
 
 def getDataloader(client_dataset, batch_size, client_index, task_id):
     train_dataset = client_dataset[client_index][task_id]
-    
-    trainset = train_dataset
-    traindata, testdata = random_split(trainset,
-                                       [int(len(trainset) * 0.7), len(trainset) - int(len(trainset) * 0.7)])
-    train_loader = DataLoader(dataset=traindata,
+
+    train_loader = DataLoader(dataset=train_dataset,
                                   shuffle=True,
                                   batch_size=batch_size,
                                   num_workers=0,
                                   pin_memory=True)
-    
-    test_laoder = DataLoader(dataset=testdata,
-								  shuffle=False,
-								  batch_size=batch_size,
-								  num_workers=0,
-								  pin_memory=True)
 
-    return train_loader, test_laoder
+    return train_loader
 
 def split_dataset_by_target(dataset, class_real):
     # 创建一个字典，用于存储每个类的索引

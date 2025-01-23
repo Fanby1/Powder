@@ -77,8 +77,8 @@ class Cifar100_Spliter():
         dirichlet_perclass = {}
         for i in class_public:
             a = np.random.dirichlet(np.ones(self.client_num), 1)
-            # while  (a < 0.1).any():
-            #     a = np.random.dirichlet(np.ones(self.client_num), 1)
+            while  (a < 0.1).any():
+                a = np.random.dirichlet(np.ones(self.client_num), 1)
             dirichlet_perclass[i] = a[0]
         for i in range(0,self.client_num):
             for j in range(0,self.task_num):
