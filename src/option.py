@@ -27,7 +27,7 @@ def args_parser():
     #CODAP: [100, 8, 1, 0, 0, 6] Dual: [25, 20, 1, 0, 0, 10] L2P: [20, 20, 1, 0, 0, 6] CODAP_ours_v1: [25, 10, 10, 8, 0, 0, 6]
     parser.add_argument('--prompt_flag', type=str, default='codap', help='method of prompt')
     parser.add_argument('--global_weight', type=float, default=0.5, help="weight of the global model")
-    parser.add_argument('--private_class_num', default=15, type=int, nargs="+", help='the private class for every client')
+    parser.add_argument('--private_class_num', default=40, type=int, nargs="+", help='the private class for every client')
     parser.add_argument('--imput_size', default=224, type=int, nargs="+", help='the input size of the model')
     #global_weight
     parser.add_argument('--centralized_pretrain', action='store_true', default=False, help="whether pretrain")   

@@ -369,8 +369,6 @@ class GLFC_model_hard:
             data = data.expand(1, 3, data.size(2), data.size(3))
         elif self.dataset == 'DomainNet':
             data = transform(Image.fromarray(jpg_image_to_array(images[0]))).unsqueeze(0)
-        elif self.dataset == 'ImageNet_R':
-            data = transform(Image.fromarray(jpg_image_to_array(images[0]))).unsqueeze(0)
         else:
             numpy_image = images[0][0].permute(1, 2, 0).numpy().astype(np.uint8)
             data = transform(Image.fromarray(numpy_image)).unsqueeze(0)
@@ -378,8 +376,6 @@ class GLFC_model_hard:
             if self.dataset == 'MNIST':
                 data = torch.cat((data, self.transform(Image.fromarray(images[index])).unsqueeze(0).expand(1, 3, data.size(2), data.size(3))), dim=0)
             elif self.dataset == 'DomainNet':
-                data = torch.cat((data, self.transform(Image.fromarray(jpg_image_to_array(images[0]))).unsqueeze(0)), dim=0)
-            elif self.dataset == 'ImageNet_R':
                 data = torch.cat((data, self.transform(Image.fromarray(jpg_image_to_array(images[0]))).unsqueeze(0)), dim=0)
             else:
                 numpy_image = images[index][0].permute(1, 2, 0).numpy().astype(np.uint8)

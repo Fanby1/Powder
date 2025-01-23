@@ -175,11 +175,15 @@ def main():
         
         client_data_train = []
         client_data_test = []
-        for data in client_data:
-            train_dataset, test_dataset = random_split(data, [int(len(data) * 0.7), len(data) - int(len(data) * 0.7)])
-    
-            client_data_train.append(train_dataset)
-            client_data_test.append(test_dataset)
+        for subset in client_data:
+            temp_train = []
+            temp_test =[]
+            for data in subset:
+                train_dataset, test_dataset = random_split(data, [int(len(data) * 0.7), len(data) - int(len(data) * 0.7)])
+                temp_train.append(train_dataset)
+                temp_test.append(test_dataset)
+            client_data_train.append(temp_train)
+            client_data_test.append(temp_test)
         surro_data, test_data = dataset_spliter.process_testdata(5)
         surro_data = iCIFAR100c(subset=surro_data)
     
