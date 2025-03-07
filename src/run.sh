@@ -3,12 +3,12 @@ python fl_main_hard.py \
   --global_update_lr 100 \
   --img_size 224 \
   --numclass 500 \
-  --class_per_task 20 \
+  --class_per_task 10 \
   --dataset CIFAR100 \
   --easy 0 \
   --tasks_global 5 \
   --num_clients 5 \
-  --epochs_global 25 \
+  --epochs_global 50 \
   --local_client 5 \
   --learning_rate 0.005 \
   --method fed_cprompt \

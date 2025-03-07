@@ -35,13 +35,14 @@ class Cifar100_Spliter():
                                     transforms.Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))])
         self.private_class_num = private_class_num
         self.input_size = input_size
+        self.cifar100_dataset = CIFAR100(root='./local_datasets', train=True, download=True)
+        
 
 
 
     # 分成client_num数目个subset,每个subset里包含了task个subsubset
     def random_split(self):
         trans = build_transform(True,self.input_size)
-        self.cifar100_dataset = CIFAR100(root='./local_datasets', train=True, download=True)
         trainset = self.cifar100_dataset
 
         # 100个类别的数据分给三个客户端使用
@@ -107,7 +108,6 @@ class Cifar100_Spliter():
 
     def process_testdata(self,surrogate_num):
         trans = build_transform(False,self.input_size)
-        self.cifar100_dataset = CIFAR100(root='./local_datasets', train=False, download=True)
         testset = self.cifar100_dataset
         # 100个类别的数据分给三个客户端使用
 
@@ -139,7 +139,6 @@ class Cifar100_Spliter():
 
     def random_split_synchron(self):
         trans = build_transform(True,self.input_size)
-        self.cifar100_dataset = CIFAR100(root='./local_datasets', train=True, download=True)
         trainset = self.cifar100_dataset
 
         # 100个类别的数据分给三个客户端使用
@@ -166,8 +165,8 @@ class Cifar100_Spliter():
         dirichlet_perclass = {}
         for i in class_public:
             a = np.random.dirichlet(np.ones(self.client_num), 1)
-            # while  (a < 0.1).any():
-            #     a = np.random.dirichlet(np.ones(self.client_num), 1)
+            while  (a < 0.1).any():
+                a = np.random.dirichlet(np.ones(self.client_num), 1)
             dirichlet_perclass[i] = a[0]
         for i in range(0,self.client_num):
             for j in range(0,self.task_num):

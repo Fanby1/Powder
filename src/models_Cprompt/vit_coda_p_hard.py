@@ -531,8 +531,8 @@ class ResNetZoo_hard(nn.Module):
                         #print(prompt_choosing_2.size())
                         finished_task_1 = finished_task[t_1]
                         finished_task_2 = finished_task[t_2]
-                        print(finished_task_1)
-                        print(finished_task_2)
+                        # print(finished_task_1)
+                        # print(finished_task_2)
                             
                         prompt_choosing_1 = prompt_choosing_1.reshape(prompt_choosing_1.shape[0], len(finished_task_1), -1)
                         prompt_choosing_1 = prompt_choosing_1[:, len(finished_task_1)-5:, :]

@@ -145,11 +145,11 @@ def main():
                 p.requires_grad = False
     
     if args.dataset == 'CIFAR100':
-        dataset_spliter = Cifar100_Spliter(client_num=args.num_clients, task_num=args.task_size,
+        dataset_spliter = Cifar100_Spliter(client_num=args.num_clients, task_num=int(args.epochs_global / args.tasks_global),
                                                          private_class_num=args.private_class_num,
                                                          input_size=224)
         
-        client_data, client_mask = dataset_spliter.random_split()
+        client_data, client_mask = dataset_spliter.random_split_synchron()
         client_data_train = []
         client_data_test = []
         for subset in client_data:
@@ -166,11 +166,11 @@ def main():
         surro_data = iCIFAR100c(subset=surro_data)
         
     elif args.dataset == 'ImageNet_R':
-        dataset_spliter = ImagenetR_Spliter(client_num=args.num_clients, task_num=args.task_size,
+        dataset_spliter = ImagenetR_Spliter(client_num=args.num_clients, task_num=int(args.epochs_global / args.tasks_global),
                                                          private_class_num=args.private_class_num,
                                                          input_size=224)
         
-        client_data, client_mask = dataset_spliter.random_split()
+        client_data, client_mask = dataset_spliter.random_split_synchron()
         args.nb_classes = 200
         
         client_data_train = []

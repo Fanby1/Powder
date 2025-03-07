@@ -267,7 +267,7 @@ class GLFC_model_hard:
                 loss_cur = torch.mean(F.binary_cross_entropy(output, target, reduction='none'))
             return loss_cur, 0, 0
         else:
-            if "fcil_imagenet" in self.model.args.method or "fcil_domainnet" in self.model.args.method:
+            if "fcil_imagenet" in self.model.args.method or "fcil_domainnet" in self.model.args.method or "fcil_cifar100" in self.model.args.method:
                 #w = self.efficient_old_class_weight(output, label)
                 loss_cur = torch.mean(F.binary_cross_entropy(output, target, reduction='none'))
                 #loss_cur = torch.mean(F.binary_cross_entropy_with_logits(output, target, reduction='none'))
